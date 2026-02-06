@@ -1,14 +1,18 @@
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 import google.generativeai as genai
-import os
 
 app = FastAPI()
 
-# إعداد الذكاء الاصطناعي باستخدام المفتاح الذي وضعته في Railway
-api_key = os.getenv("GEMINI_API_KEY")
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# إعداد المفتاح مع حماية في حال نسيانه
+API_KEY = os.getenv("GEMINI_API_KEY")
+
+if API_KEY:
+    genai.configure(api_key=API_KEY)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    model = None
 
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -20,73 +24,60 @@ def home():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>AI Private Assistant</title>
         <style>
-            :root { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --primary: #3f51b5; }
-            body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-            header { background: var(--card); padding: 15px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+            :root { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --primary: #00bcd4; }
+            body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+            header { background: var(--card); padding: 15px; text-align: center; border-bottom: 1px solid #333; }
             #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-            .message { max-width: 80%; padding: 12px; border-radius: 15px; line-height: 1.5; font-size: 16px; }
-            .user { background: var(--primary); align-self: flex-start; color: white; }
-            .ai { background: var(--card); align-self: flex-end; border: 1px solid #333; }
-            .input-area { background: var(--card); padding: 15px; display: flex; gap: 10px; border-top: 1px solid #333; }
-            input { flex: 1; background: #2c2c2c; border: none; padding: 12px; border-radius: 25px; color: white; outline: none; }
-            button { background: var(--primary); border: none; padding: 10px 20px; border-radius: 25px; color: white; cursor: pointer; font-weight: bold; }
-            button:disabled { background: #555; }
-            .loading { font-size: 12px; color: #888; margin-top: 5px; }
+            .message { max-width: 85%; padding: 12px; border-radius: 15px; line-height: 1.5; word-wrap: break-word; }
+            .user { background: var(--primary); align-self: flex-start; color: black; font-weight: bold; }
+            .ai { background: #333; align-self: flex-end; }
+            .input-area { background: var(--card); padding: 15px; display: flex; gap: 10px; }
+            input { flex: 1; background: #2c2c2c; border: 1px solid #444; padding: 12px; border-radius: 25px; color: white; outline: none; }
+            button { background: var(--primary); border: none; padding: 10px 20px; border-radius: 25px; color: black; cursor: pointer; font-weight: bold; }
+            .error-msg { color: #ff5252; font-size: 14px; text-align: center; }
         </style>
     </head>
     <body>
-        <header>
-            <h2>ذكائي الاصطناعي الخاص 🤖</h2>
-        </header>
-
-        <div id="chat-container">
-            <div class="message ai">مرحباً! أنا جاهز لمساعدتك، اسألني أي شيء.</div>
-        </div>
-
+        <header><h2>مساعدي الشخصي 🤖</h2></header>
+        <div id="chat-container"><div class="message ai">مرحباً! كيف يمكنني مساعدتك اليوم؟</div></div>
         <div class="input-area">
-            <input type="text" id="userInput" placeholder="اكتب رسالتك هنا..." onkeypress="if(event.key==='Enter') askAI()">
-            <button id="sendBtn" onclick="askAI()">إرسال</button>
+            <input type="text" id="userInput" placeholder="اسألني أي شيء..." onkeypress="if(event.key==='Enter') askAI()">
+            <button onclick="askAI()">إرسال</button>
         </div>
 
         <script>
             async function askAI() {
-                const inputField = document.getElementById('userInput');
-                const chatContainer = document.getElementById('chat-container');
-                const sendBtn = document.getElementById('sendBtn');
-                const message = inputField.value.trim();
+                const input = document.getElementById('userInput');
+                const container = document.getElementById('chat-container');
+                const text = input.value.trim();
+                if (!text) return;
 
-                if (!message) return;
-
-                // إضافة رسالة المستخدم للواجهة
-                appendMessage(message, 'user');
-                inputField.value = '';
-                inputField.disabled = true;
-                sendBtn.disabled = true;
-
-                // إضافة مكان لرد الذكاء الاصطناعي
-                const aiMsgDiv = appendMessage('جاري التفكير...', 'ai');
+                appendMessage(text, 'user');
+                input.value = '';
+                
+                const aiDiv = appendMessage('جاري التفكير...', 'ai');
 
                 try {
-                    const response = await fetch('/chat?user_message=' + encodeURIComponent(message));
+                    // استخدام رابط نسبي لضمان التوافق مع Railway
+                    const response = await fetch(`/chat?user_message=${encodeURIComponent(text)}`);
                     const data = await response.json();
-                    aiMsgDiv.innerText = data.response || "حدث خطأ في الرد";
-                } catch (err) {
-                    aiMsgDiv.innerText = "فشل الاتصال بالسيرفر";
-                } finally {
-                    inputField.disabled = false;
-                    sendBtn.disabled = false;
-                    inputField.focus();
-                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                    
+                    if (data.error) {
+                        aiDiv.innerHTML = `<span class="error-msg">خطأ: ${data.error}</span>`;
+                    } else {
+                        aiDiv.innerText = data.response;
+                    }
+                } catch (e) {
+                    aiDiv.innerHTML = `<span class="error-msg">فشل الاتصال بالسيرفر. تأكد من عمل Railway.</span>`;
                 }
+                container.scrollTop = container.scrollHeight;
             }
 
-            function appendMessage(text, side) {
-                const container = document.getElementById('chat-container');
+            function appendMessage(msg, type) {
                 const div = document.createElement('div');
-                div.className = 'message ' + side;
-                div.innerText = text;
-                container.appendChild(div);
-                container.scrollTop = container.scrollHeight;
+                div.className = 'message ' + type;
+                div.innerText = msg;
+                document.getElementById('chat-container').appendChild(div);
                 return div;
             }
         </script>
@@ -96,9 +87,14 @@ def home():
 
 @app.get("/chat")
 def chat(user_message: str):
+    if not API_KEY:
+        return {"error": "مفتاح الـ API غير مضبوط في إعدادات Railway (Variables)"}
+    
     try:
-        # توجيه الـ AI ليتحدث بالعربية دائماً وبأسلوب المساعد الشخصي
-        response = model.generate_content(f"أجب بالعربية وبشكل مختصر ومفيد: {user_message}")
+        # إضافة تعليمات النظام لضمان استجابة جيدة
+        prompt = f"أنت مساعد شخصي ذكي. أجب باللغة العربية على ما يلي: {user_message}"
+        response = model.generate_content(prompt)
         return {"response": response.text}
     except Exception as e:
+        # إرجاع الخطأ الفعلي للمساعدة في التشخيص
         return {"error": str(e)}
