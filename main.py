@@ -1,18 +1,12 @@
 import os
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-import google.generativeai as genai
+from groq import Groq
 
 app = FastAPI()
 
-# إعداد المفتاح
-API_KEY = os.getenv("GEMINI_API_KEY")
-
-if API_KEY:
-    # تهيئة المكتبة
-    genai.configure(api_key=API_KEY)
-else:
-    print("المفتاح مفقود!")
+# إعداد مفتاح Groq
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -22,23 +16,24 @@ def home():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>AI Bot</title>
+        <title>Llama 3 AI</title>
         <style>
-            body { background: #111; color: white; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; }
-            #chat { flex: 1; overflow-y: auto; padding: 20px; }
-            .msg { margin-bottom: 15px; padding: 10px; border-radius: 10px; max-width: 80%; }
-            .ai { background: #333; align-self: flex-end; }
-            .user { background: #007bff; align-self: flex-start; }
-            .input-box { display: flex; padding: 10px; background: #222; }
-            input { flex: 1; padding: 10px; border: none; border-radius: 5px; }
-            button { margin-right: 10px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; }
+            body { background: #000; color: #00ff00; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; height: 100vh; margin: 0; }
+            #chat { flex: 1; overflow-y: auto; padding: 20px; border: 1px solid #00ff00; margin: 10px; border-radius: 10px; }
+            .msg { margin-bottom: 15px; padding: 10px; }
+            .ai { color: #00ff00; }
+            .user { color: #00bfff; }
+            .input-box { display: flex; padding: 10px; }
+            input { flex: 1; padding: 12px; background: #111; border: 1px solid #00ff00; color: white; border-radius: 5px; }
+            button { margin-right: 10px; padding: 10px 20px; background: #00ff00; color: black; border: none; cursor: pointer; font-weight: bold; }
         </style>
     </head>
     <body>
-        <div id="chat"><div class="msg ai">أهلاً بك.. جرب الآن بعد التحديث.</div></div>
+        <h2 style="text-align:center">Llama 3 AI System 🤖</h2>
+        <div id="chat"><div class="msg ai">نظام Llama 3 متصل وجاهز.. اسألني أي شيء.</div></div>
         <div class="input-box">
-            <input type="text" id="userInput" placeholder="اكتب هنا...">
-            <button onclick="askAI()">إرسال</button>
+            <input type="text" id="userInput" placeholder="اكتب أمرك هنا...">
+            <button onclick="askAI()">تنفيذ</button>
         </div>
         <script>
             async function askAI() {
@@ -47,25 +42,25 @@ def home():
                 const text = input.value;
                 if(!text) return;
 
-                const userDiv = document.createElement('div');
-                userDiv.className = 'msg user';
-                userDiv.innerText = text;
-                chat.appendChild(userDiv);
+                append('أنت: ' + text, 'user');
                 input.value = '';
-
-                const aiDiv = document.createElement('div');
-                aiDiv.className = 'msg ai';
-                aiDiv.innerText = 'جاري الرد...';
-                chat.appendChild(aiDiv);
+                const aiDiv = append('جاري المعالجة...', 'ai');
 
                 try {
                     const res = await fetch(`/chat?user_message=${encodeURIComponent(text)}`);
                     const data = await res.json();
-                    aiDiv.innerText = data.response || data.error;
+                    aiDiv.innerText = 'Llama 3: ' + (data.response || data.error);
                 } catch {
-                    aiDiv.innerText = 'خطأ في الاتصال';
+                    aiDiv.innerText = 'خطأ في الاتصال بالسيرفر';
                 }
                 chat.scrollTop = chat.scrollHeight;
+            }
+            function append(t, c) {
+                const d = document.createElement('div');
+                d.className = 'msg ' + c;
+                d.innerText = t;
+                chat.appendChild(d);
+                return d;
             }
         </script>
     </body>
@@ -74,14 +69,14 @@ def home():
 
 @app.get("/chat")
 def chat(user_message: str):
-    if not API_KEY:
-        return {"error": "تأكد من وضع المفتاح في Railway Variables باسم GEMINI_API_KEY"}
-    
     try:
-        # استخدام الموديل بالاسم المختصر الصريح
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        # طلب الرد
-        response = model.generate_content(user_message)
-        return {"response": response.text}
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "أنت مساعد ذكي تجيب باللغة العربية دائماً."},
+                {"role": "user", "content": user_message}
+            ],
+        )
+        return {"response": completion.choices[0].message.content}
     except Exception as e:
-        return {"error": f"جوجل تقول: {str(e)}"}
+        return {"error": str(e)}
