@@ -5,14 +5,14 @@ import google.generativeai as genai
 
 app = FastAPI()
 
-# جلب المفتاح من إعدادات Railway
+# إعداد المفتاح
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 if API_KEY:
-    # إعداد الـ API مع التأكد من استخدام الموديلات المستقرة
+    # تهيئة المكتبة
     genai.configure(api_key=API_KEY)
 else:
-    print("خطأ: لم يتم العثور على GEMINI_API_KEY!")
+    print("المفتاح مفقود!")
 
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -22,64 +22,50 @@ def home():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>مساعدي الذكي</title>
+        <title>AI Bot</title>
         <style>
-            :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --primary: #38bdf8; }
-            body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-            header { background: var(--card); padding: 1rem; text-align: center; border-bottom: 1px solid #334155; font-weight: bold; }
-            #chat-box { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
-            .msg { max-width: 85%; padding: 0.8rem 1.2rem; border-radius: 1rem; line-height: 1.6; }
-            .user { background: var(--primary); color: #000; align-self: flex-start; border-bottom-right-radius: 0; }
-            .ai { background: var(--card); align-self: flex-end; border-bottom-left-radius: 0; border: 1px solid #334155; }
-            .input-area { background: var(--card); padding: 1rem; display: flex; gap: 0.5rem; border-top: 1px solid #334155; }
-            input { flex: 1; background: #0f172a; border: 1px solid #334155; padding: 0.75rem; border-radius: 999px; color: white; outline: none; }
-            button { background: var(--primary); border: none; padding: 0.75rem 1.5rem; border-radius: 999px; color: #000; cursor: pointer; font-weight: bold; }
-            .err { color: #ef4444; background: #450a0a; border: 1px solid #ef4444; font-size: 0.8rem; }
+            body { background: #111; color: white; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; }
+            #chat { flex: 1; overflow-y: auto; padding: 20px; }
+            .msg { margin-bottom: 15px; padding: 10px; border-radius: 10px; max-width: 80%; }
+            .ai { background: #333; align-self: flex-end; }
+            .user { background: #007bff; align-self: flex-start; }
+            .input-box { display: flex; padding: 10px; background: #222; }
+            input { flex: 1; padding: 10px; border: none; border-radius: 5px; }
+            button { margin-right: 10px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; }
         </style>
     </head>
     <body>
-        <header>روبوت الدردشة المحدث 🤖</header>
-        <div id="chat-box">
-            <div class="msg ai">أهلاً! لقد قمت بتحديث نظام الاتصال بجوجل. كيف يمكنني مساعدتك الآن؟</div>
-        </div>
-        <div class="input-area">
-            <input type="text" id="userInput" placeholder="اكتب سؤالك هنا..." onkeypress="if(event.key==='Enter') askAI()">
+        <div id="chat"><div class="msg ai">أهلاً بك.. جرب الآن بعد التحديث.</div></div>
+        <div class="input-box">
+            <input type="text" id="userInput" placeholder="اكتب هنا...">
             <button onclick="askAI()">إرسال</button>
         </div>
-
         <script>
             async function askAI() {
                 const input = document.getElementById('userInput');
-                const box = document.getElementById('chat-box');
-                const text = input.value.trim();
-                if (!text) return;
+                const chat = document.getElementById('chat');
+                const text = input.value;
+                if(!text) return;
 
-                appendMsg(text, 'user');
+                const userDiv = document.createElement('div');
+                userDiv.className = 'msg user';
+                userDiv.innerText = text;
+                chat.appendChild(userDiv);
                 input.value = '';
-                const aiMsg = appendMsg('جاري التفكير...', 'ai');
+
+                const aiDiv = document.createElement('div');
+                aiDiv.className = 'msg ai';
+                aiDiv.innerText = 'جاري الرد...';
+                chat.appendChild(aiDiv);
 
                 try {
                     const res = await fetch(`/chat?user_message=${encodeURIComponent(text)}`);
                     const data = await res.json();
-                    if (data.error) {
-                        aiMsg.classList.add('err');
-                        aiMsg.innerText = "خطأ: " + data.error;
-                    } else {
-                        aiMsg.innerText = data.response;
-                    }
-                } catch (e) {
-                    aiMsg.innerText = "فشل الاتصال بالسيرفر.";
+                    aiDiv.innerText = data.response || data.error;
+                } catch {
+                    aiDiv.innerText = 'خطأ في الاتصال';
                 }
-                box.scrollTop = box.scrollHeight;
-            }
-
-            function appendMsg(t, c) {
-                const d = document.createElement('div');
-                d.className = 'msg ' + c;
-                d.innerText = t;
-                document.getElementById('chat-box').appendChild(d);
-                document.getElementById('chat-box').scrollTop = document.getElementById('chat-box').scrollHeight;
-                return d;
+                chat.scrollTop = chat.scrollHeight;
             }
         </script>
     </body>
@@ -89,19 +75,13 @@ def home():
 @app.get("/chat")
 def chat(user_message: str):
     if not API_KEY:
-        return {"error": "المفتاح مفقود في Railway"}
+        return {"error": "تأكد من وضع المفتاح في Railway Variables باسم GEMINI_API_KEY"}
     
-    # استخدام الإصدارات المستقرة الحديثة فقط
-    # الموديل 'gemini-1.5-flash' هو الأحدث والمفترض عمله عالمياً الآن
     try:
-        model = genai.GenerativeModel('models/gemini-1.5-flash')
-        response = model.generate_content(f"أجب بالعربية: {user_message}")
+        # استخدام الموديل بالاسم المختصر الصريح
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        # طلب الرد
+        response = model.generate_content(user_message)
         return {"response": response.text}
     except Exception as e:
-        # محاولة أخيرة باستخدام الاسم البديل للموديل المستقر
-        try:
-            fallback = genai.GenerativeModel('models/gemini-1.0-pro')
-            response = fallback.generate_content(f"أجب بالعربية: {user_message}")
-            return {"response": response.text}
-        except Exception as e2:
-            return {"error": f"جوجل ترفض الطلب. تأكد من صلاحية المفتاح. التفاصيل: {str(e2)}"}
+        return {"error": f"جوجل تقول: {str(e)}"}
